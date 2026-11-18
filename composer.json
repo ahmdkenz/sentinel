@@ -1,0 +1,42 @@
+{
+    "name": "qaify/sentinel",
+    "description": "Sensor aktivitas keamanan Laravel untuk SOC Qaify: login gagal, payload serangan, pemindai, lonjakan error — tanpa body / IP mentah.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "security", "monitoring", "qaify", "soc"],
+    "require": {
+        "php": "^8.2",
+        "illuminate/console": "^11.0|^12.0|^13.0",
+        "illuminate/http": "^11.0|^12.0|^13.0",
+        "illuminate/support": "^11.0|^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "phpunit/phpunit": "^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Qaify\\Sentinel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Qaify\\Sentinel\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Qaify\\Sentinel\\SentinelServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
