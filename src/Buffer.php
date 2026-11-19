@@ -40,6 +40,12 @@ final class Buffer
         return $this->dir . DIRECTORY_SEPARATOR . gmdate('YmdHi', $time) . '.jsonl';
     }
 
+    /** Penanda kiriman sukses terakhir (mtime); tidak ikut glob *.jsonl. */
+    public function heartbeatFile(): string
+    {
+        return $this->dir . DIRECTORY_SEPARATOR . '.heartbeat';
+    }
+
     /**
      * Berkas menit yang sudah tertutup (lebih lama dari menit berjalan), terlama dulu.
      *

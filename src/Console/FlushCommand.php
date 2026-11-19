@@ -12,6 +12,7 @@ use Throwable;
  * sentinel:flush — tiap menit lewat scheduler. Satu berkas menit = satu batch (dipecah bila > 500 kejadian):
  * penghitung trafik + kejadian identik digabung (count). batch_id deterministik → kirim ulang aman (idempoten di Qaify).
  * 2xx / 422 → berkas dihapus; 401 → berhenti (token salah / dirotasi); galat lain → dicoba lagi menit berikutnya.
+ * Tidak ada yang dikirim selama 5 menit → heartbeat (batch kosong) agar Qaify tahu sensor masih hidup.
  */
 final class FlushCommand extends Command
 {
@@ -20,6 +21,9 @@ final class FlushCommand extends Command
     protected $description = 'Kirim aktivitas keamanan yang tercatat ke Qaify SOC';
 
     private const MAX_EVENTS = 500;
+
+    /** Batas sepi sebelum heartbeat dikirim; jauh di bawah silent_minutes Qaify (30 menit). */
+    private const HEARTBEAT_SECONDS = 300;
 
     public function handle(Buffer $buffer, Client $client): int
     {
@@ -70,9 +74,58 @@ final class FlushCommand extends Command
             $sent++;
         }
 
+        if ($sent > 0) {
+            $this->markAlive($buffer);
+        } elseif ($this->heartbeatDue($buffer)) {
+            $this->heartbeat($buffer, $client);
+        }
+
         $this->info("Batch terkirim: {$sent}");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Aplikasi sepi (malam / akhir pekan) = tidak ada berkas menit = tidak ada batch. Tanpa heartbeat, Qaify
+     * mengira sensor mati ("Sensor Sentinel berhenti mengirim data"). Batch kosong tiap HEARTBEAT_SECONDS;
+     * batch_id deterministik per slot → kirim ulang aman.
+     */
+    private function heartbeat(Buffer $buffer, Client $client): void
+    {
+        $slot = intdiv(time(), self::HEARTBEAT_SECONDS);
+        try {
+            $response = $client->send([
+                'batch_id' => 'hb-' . substr(hash('sha256', (string) config('sentinel.token') . "|hb|{$slot}"), 0, 40),
+                'traffic'  => [],
+                'events'   => [],
+            ]);
+        } catch (Throwable $e) {
+            $this->warn('Qaify tidak terjangkau: ' . $e->getMessage());
+
+            return;
+        }
+        if ($response->successful()) {
+            $this->markAlive($buffer);
+            $this->line('Heartbeat terkirim.');
+        } else {
+            $this->warn("Heartbeat ditolak (HTTP {$response->status()}).");
+        }
+    }
+
+    private function heartbeatDue(Buffer $buffer): bool
+    {
+        $mtime = @filemtime($buffer->heartbeatFile());
+
+        return $mtime === false || time() - $mtime >= self::HEARTBEAT_SECONDS;
+    }
+
+    private function markAlive(Buffer $buffer): void
+    {
+        $file = $buffer->heartbeatFile();
+        $dir = dirname($file);
+        if (is_dir($dir) || @mkdir($dir, 0775, true)) {
+            @touch($file);
+        }
     }
 
     /**

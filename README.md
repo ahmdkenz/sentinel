@@ -57,6 +57,7 @@ To publish the config: `php artisan vendor:publish --tag=sentinel-config`.
 2. `sentinel:flush` sends each closed minute as one batch to `POST {url}/api/sentinel/batch`. Identical events are merged (`count`).
 3. The `batch_id` is deterministic, so resends are safe: Qaify ignores duplicates.
 4. On 2xx the file is deleted. On a network error or 5xx it is retried the next minute. On 401 it stops; check the token.
+5. When the app is quiet (no requests, so no minute files) and nothing was sent for 5 minutes, `sentinel:flush` sends an empty heartbeat batch. Without it, Qaify would report "Sensor Sentinel stopped sending data" every night. The last successful send is stored as the mtime of `{buffer_path}/.heartbeat`.
 
 Qaify's own scans (user-agent `QaifyScanner` / `QaifyMonitor`) are tagged `agent=qaify`. They are not counted as attacks.
 

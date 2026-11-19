@@ -4,7 +4,7 @@ namespace Qaify\Sentinel;
 
 final class Sentinel
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
 
     public static function configured(): bool
     {

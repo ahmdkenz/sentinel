@@ -29,6 +29,7 @@ abstract class TestCase extends Orchestra
         foreach (glob($this->bufferDir . DIRECTORY_SEPARATOR . '*') ?: [] as $file) {
             @unlink($file);
         }
+        @unlink($this->bufferDir . DIRECTORY_SEPARATOR . '.heartbeat');
         @rmdir($this->bufferDir);
         parent::tearDown();
     }

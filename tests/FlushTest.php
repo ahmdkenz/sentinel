@@ -41,7 +41,7 @@ final class FlushTest extends TestCase
             $this->assertCount(2, $r['events']);
             $this->assertSame('medium', $r['events'][0]['severity']);
             $this->assertSame(2, $r['events'][0]['count']);
-            $this->assertSame('0.1.0', $r['sensor']['version']);
+            $this->assertSame('0.1.1', $r['sensor']['version']);
 
             return true;
         });
@@ -83,7 +83,66 @@ final class FlushTest extends TestCase
 
         $this->artisan('sentinel:flush')->assertSuccessful();
         $this->assertFileDoesNotExist($old);
-        Http::assertNothingSent();
+        // hanya heartbeat, bukan batch dari berkas basi
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $r) => str_starts_with($r['batch_id'], 'hb-') && $r['traffic'] === []);
+    }
+
+    public function test_aplikasi_sepi_mengirim_heartbeat_sekali_per_lima_menit(): void
+    {
+        Http::fake(['qaify.test/*' => Http::response(['data' => ['accepted' => 0]], 202)]);
+
+        $this->artisan('sentinel:flush')->assertSuccessful();
+        $this->artisan('sentinel:flush')->assertSuccessful();
+
+        Http::assertSentCount(1);
+        Http::assertSent(function (Request $r) {
+            $this->assertMatchesRegularExpression('/^hb-[a-f0-9]{40}$/', $r['batch_id']);
+            $this->assertSame([], $r['traffic']);
+            $this->assertSame([], $r['events']);
+            $this->assertSame('0.1.1', $r['sensor']['version']);
+
+            return true;
+        });
+        $this->assertFileExists($this->bufferDir . DIRECTORY_SEPARATOR . '.heartbeat');
+    }
+
+    public function test_heartbeat_dikirim_lagi_setelah_lima_menit(): void
+    {
+        Http::fake(['qaify.test/*' => Http::response([], 202)]);
+        $this->artisan('sentinel:flush')->assertSuccessful();
+        touch($this->bufferDir . DIRECTORY_SEPARATOR . '.heartbeat', time() - 301);
+
+        $this->artisan('sentinel:flush')->assertSuccessful();
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_heartbeat_gagal_dicoba_lagi_menit_berikutnya(): void
+    {
+        $calls = 0;
+        Http::fake(function () use (&$calls) {
+            return Http::response([], ++$calls === 1 ? 503 : 202);
+        });
+
+        $this->artisan('sentinel:flush')->assertSuccessful();
+        $this->assertFileDoesNotExist($this->bufferDir . DIRECTORY_SEPARATOR . '.heartbeat');
+
+        $this->artisan('sentinel:flush')->assertSuccessful();
+        $this->assertSame(2, $calls);
+    }
+
+    public function test_aplikasi_ramai_tidak_mengirim_heartbeat_terpisah(): void
+    {
+        $this->seedMinute(2, [[200, null]]);
+        Http::fake(['qaify.test/*' => Http::response([], 202)]);
+
+        $this->artisan('sentinel:flush')->assertSuccessful();
+        // menit berikutnya sepi: kiriman barusan sudah dihitung sebagai tanda hidup
+        $this->artisan('sentinel:flush')->assertSuccessful();
+
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $r) => str_starts_with($r['batch_id'], 'hb-'));
     }
 
     public function test_sentinel_test_mengirim_kejadian_uji(): void
